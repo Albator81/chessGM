@@ -36,7 +36,7 @@ int main() {
     auto start = std::chrono::high_resolution_clock::now();
 
     // Calling the function
-
+    
 
     // Stop measuring time
     auto stop = std::chrono::high_resolution_clock::now();
@@ -52,8 +52,8 @@ int main() {
 // Function Definitions
 
 Board_Bitboards use_FEN(std::string fen, bool& whiteToMove, std::array<int, 4>& castlingRights, int& enPassantSquare, int& halfMoveClock, int& fullMoveNumber) {
-    std::array<U64, 6> arrW;
-    std::array<U64, 6> arrB;
+    std::array<U64, 6> arrW = { 0ULL, 0ULL, 0ULL, 0ULL, 0ULL, 0ULL };
+    std::array<U64, 6> arrB = { 0ULL, 0ULL, 0ULL, 0ULL, 0ULL, 0ULL };
     
     // Parse FEN string
     std::stringstream ss(fen);
@@ -83,18 +83,18 @@ Board_Bitboards use_FEN(std::string fen, bool& whiteToMove, std::array<int, 4>& 
         square = Bitboard::fileRankIndexToSquareIndex(x, y);
         // Handle piece positions
         switch (c) {
-        case 'P': arrW[PAWN] |= 1ULL << (63 - square); break;
-        case 'p': arrB[PAWN] |= 1ULL << (63 - square); break;
-        case 'B': arrW[BISHOP] |= 1ULL << (63 - square); break;
-        case 'b': arrB[BISHOP] |= 1ULL << (63 - square); break;
-        case 'N': arrW[KNIGHT] |= 1ULL << (63 - square); break;
-        case 'n': arrB[KNIGHT] |= 1ULL << (63 - square); break;
-        case 'R': arrW[ROOK] |= 1ULL << (63 - square); break;
-        case 'r': arrB[ROOK] |= 1ULL << (63 - square); break;
-        case 'Q': arrW[QUEEN] |= 1ULL << (63 - square); break;
-        case 'q': arrB[QUEEN] |= 1ULL << (63 - square); break;
-        case 'K': arrW[KING] |= 1ULL << (63 - square); break;
-        case 'k': arrB[KING] |= 1ULL << (63 - square); break;
+        case 'P': arrW[PAWN]   |= U64(1) << (63 - square); break;
+        case 'p': arrB[PAWN]   |= U64(1) << (63 - square); break;
+        case 'B': arrW[BISHOP] |= U64(1) << (63 - square); break;
+        case 'b': arrB[BISHOP] |= U64(1) << (63 - square); break;
+        case 'N': arrW[KNIGHT] |= U64(1) << (63 - square); break;
+        case 'n': arrB[KNIGHT] |= U64(1) << (63 - square); break;
+        case 'R': arrW[ROOK]   |= U64(1) << (63 - square); break;
+        case 'r': arrB[ROOK]   |= U64(1) << (63 - square); break;
+        case 'Q': arrW[QUEEN]  |= U64(1) << (63 - square); break;
+        case 'q': arrB[QUEEN]  |= U64(1) << (63 - square); break;
+        case 'K': arrW[KING]   |= U64(1) << (63 - square); break;
+        case 'k': arrB[KING]   |= U64(1) << (63 - square); break;
         default: std::cerr << "Incorrect position" << std::endl;
         }
     }

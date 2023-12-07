@@ -9,8 +9,8 @@ typedef unsigned long long U64;
 typedef bool Bit;
 typedef bool Turn;
 
-// tkt
-enum ChessPiece { PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING };
+// yeah now there are 7 types of pieces in chess, including empty square !
+enum ChessPiece { PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING, EMPTYSQUARE };
 
 const Turn WHITETURN = true;
 const Turn BLACKTURN = false;
@@ -126,21 +126,26 @@ private:
     U64  occupied_;
     U64  empty_;
 
-    std::array<U64, 64> pieceAttacksBitboards_;
     std::array<ChessPiece, 64> pieceTypes_;
+    std::array<U64, 64>        pieceAttacksBitboards_;
+
+    // THINGS I NEED TO MAKE LEGAL MOVES FASTER
+    U64 whiteRayAttacks;
+    U64 blackRayAttacks;
+    U64 whiteRayPastOneAttacks;
+    U64 blackRayPastOneAttacks;
 
 public:
     Board_Bitboards(std::array<U64, 6> wPBNRQK, std::array<U64, 6> bPBNRQK, Turn sideToMove); // Constructor
     ~Board_Bitboards(); // Destructor
 
-    const std::array<U64, 6>& arrWhitePieces() const;
-    const std::array<U64, 6>& arrBlackPieces() const;
-    const Turn& turn    () const;
-    const U64&  whiteBb () const;
-    const U64&  blackBb () const;
-    const U64&  occupied() const;
-    const U64&  empty   () const;
-
+    const std::array<U64, 6>&         arrWhitePieces       () const;
+    const std::array<U64, 6>&         arrBlackPieces       () const;
+    const Turn&                       turn                 () const;
+    const U64&                        whiteBb              () const;
+    const U64&                        blackBb              () const;
+    const U64&                        occupied             () const;
+    const U64&                        empty                () const;
     const std::array<U64, 64>&        pieceAttacksBitboards() const;
     const std::array<ChessPiece, 64>& pieceTypes           () const;
 
@@ -150,6 +155,8 @@ public:
     // (side that waits for its turn)'s
     std::array<U64, 6> waitingPiecesBb();
     U64 waitingBb();
+
+    U64 waitingRayAttacks();
 
     // Rotations
     // I think these will be useless
@@ -161,63 +168,63 @@ public:
     
 
     // one square movements
-    U64 southOne(U64 bitboard);
-    U64 northOne(U64 bitboard);
-    U64 eastOne(U64  bitboard);
+    U64 northOne    (U64 bitboard);
+    U64 southOne    (U64 bitboard);
+    U64 eastOne     (U64 bitboard);
+    U64 westOne     (U64 bitboard);
     U64 northEastOne(U64 bitboard);
-    U64 southEastOne(U64 bitboard);
-    U64 westOne(U64 bitboard);
-    U64 southWestOne(U64 bitboard);
     U64 northWestOne(U64 bitboard);
+    U64 southEastOne(U64 bitboard);
+    U64 southWestOne(U64 bitboard);
 
     // Unlimited moves functions
 
-    /// @brief Gives the Unlimited Knight's moves indexes on the Bitboard. NOT Using knightOffsets.
-    U64 getUKnightMovesBitboard(SquareIndex square);
+    U64 uRayNorth    (SquareIndex square);
+    U64 uRaySouth    (SquareIndex square);
+    U64 uRayEast     (SquareIndex square);
+    U64 uRayWest     (SquareIndex square);
+    U64 uRayNorthEast(SquareIndex square);
+    U64 uRayNorthWest(SquareIndex square);
+    U64 uRaySouthEast(SquareIndex square);
+    U64 uRaySouthWest(SquareIndex square);
+
+    U64 getUKnightMovesBitboard (SquareIndex square);
     U64 getUKnightsMovesBitboard(U64 bitboard);
 
-    /// @brief Gives the Unlimited King's moves indexes on the Bitboard. NOT Using kingOffsets. 
-    U64 getUKingMovesBitboard(SquareIndex square);
+    U64 getUKingMovesBitboard (SquareIndex square);
     U64 getUKingsMovesBitboard(U64 bitboard);
-    U64 getUQueenMovesBitboard(SquareIndex square);
 
-    U64 uRookNorthRay(SquareIndex square);
-    U64 uRookSouthRay(SquareIndex square);
-    U64 uRookEastRay(SquareIndex square);
-    U64 uRookWestRay (SquareIndex square);
     U64 getURookMovesBitboard(SquareIndex square);
     U64 getURooksMovesBitboard(U64 bitboard);
     
-    U64 uBishopNorthEastRay(SquareIndex square);
-    U64 uBishopNorthWestRay (SquareIndex square);
-    U64 uBishopSouthEastRay(SquareIndex square);
-    U64 uBishopSouthWestRay (SquareIndex square);
     U64 getUBishopMovesBitboard(SquareIndex square);
     U64 getUBishopsMovesBitboard(U64 bb);
+
+    U64 getUQueenMovesBitboard(SquareIndex square);
+
     /// @brief Gives the Unlimited Pawn's moves indexes on the Bitboard. NOT including captures
     U64 getUPawnMovesBitboard(SquareIndex square, bool hasMoved, bool isWhite);
     U64 getUPawnsMovesBitboard(U64 bb, bool hasMoved, bool isWhite);
 
 
-    bool isInCheck();
-    bool isPinned();
-
-    // moves that need to be checked by getLegalMoves(movesBitboard) to see if they are legal // not now, directly generating legal moves now using their attacks
     // https://peterellisjones.com/posts/generating-legal-chess-moves-efficiently/
+
+    // attacks, limited by pieces on squares
+
+    U64 rayNorth    (SquareIndex square);
+    U64 raySouth    (SquareIndex square);
+    U64 rayEast     (SquareIndex square);
+    U64 rayWest     (SquareIndex square);
+    U64 rayNorthEast(SquareIndex square);
+    U64 rayNorthWest(SquareIndex square);
+    U64 raySouthEast(SquareIndex square);
+    U64 raySouthWest(SquareIndex square);
 
     U64 getKingAttacksBitboard(SquareIndex square);
     U64 getKnightAttacksBitboard(SquareIndex square);
 
-    U64 bishopNorthEastRay(SquareIndex square);
-    U64 bishopNorthWestRay(SquareIndex square);
-    U64 bishopSouthEastRay(SquareIndex square);
-    U64 bishopSouthWestRay(SquareIndex square);
     U64 getBishopAttacksBitboard(SquareIndex square);
 
-    U64 rookNorthRayAttack(SquareIndex square);
-    U64 rookSouthRayAttack(SquareIndex square);
-    U64 rookEastRayAttack(SquareIndex square);
-    U64 rookWestRayAttack(SquareIndex square);
     U64 getRookAttacksBitboard(SquareIndex square);
 
     U64 getQueenAttacksBitboard(SquareIndex square);
@@ -226,4 +233,26 @@ public:
 
     void changeBoard(std::array<U64, 6> wPNBRQK, std::array<U64, 6> bPNBRQK, Turn turn);
     Turn changeTurn();
+
+// pinned pieces necessary functions
+
+    U64 rayNorthPastOne    (SquareIndex square);
+    U64 raySouthPastOne    (SquareIndex square);
+    U64 rayEastPastOne     (SquareIndex square);
+    U64 rayWestPastOne     (SquareIndex square);
+    U64 rayNorthEastPastOne(SquareIndex square);
+    U64 rayNorthWestPastOne(SquareIndex square);
+    U64 raySouthEastPastOne(SquareIndex square);
+    U64 raySouthWestPastOne(SquareIndex square);
+
+    U64 bishopPastOneAttacks(SquareIndex square);
+    U64 rookPastOneAttacks(SquareIndex square);
+    U64 queenPastOneAttacks(SquareIndex square);
+
+    bool isPinned();
+
+    bool isInCheck();
+
+    // FINALLY DOING LEGAL MOVES
+    U64 knightMoves(SquareIndex square);
 };
