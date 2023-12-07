@@ -165,14 +165,26 @@ int Bitboard::bitCount(U64 bb)
 
 std::vector<SquareIndex> Bitboard::getSetBitsPositions(U64 b) {
     std::vector<SquareIndex> positions;
-    int i = 0;
     while (b) {
-        if ((b >> i) & 1ULL) {
-            positions.push_back(i);
-        }
+        positions.push_back(getIndexOfLeastSignificantSetBit(b));
+        resetIsolatedLeastSignificantSetBit(b);
     }
     return positions;
 }
+
+// Print board
+void Bitboard::visualizeBitboard(U64 bitboard) {
+    std::string rankString = "";
+    for (RankIndex rank = 0; rank < 8; rank++) {
+        for (FileIndex file = 0; file < 8; file++) {
+            rankString += bitboard >> fileRankIndexToSquareIndex(file, 7 - rank) & 1 ? '1' : '.';
+            rankString += ' ';
+        }
+        rankString += '\n';
+    }
+    std::cout << rankString << std::endl;
+}
+
 
 Board_Bitboards::Board_Bitboards(std::array<U64, 6> wPNBRQK, std::array<U64, 6> bPNBRQK, Turn sideToMove) {
     for (int i = 0; i < 6; ++i) {
@@ -180,71 +192,80 @@ Board_Bitboards::Board_Bitboards(std::array<U64, 6> wPNBRQK, std::array<U64, 6> 
         arrBlackPieces_[i] = bPNBRQK[i];
     }
 
-
     whiteBb_ = wPNBRQK[PAWN] | wPNBRQK[KNIGHT] | wPNBRQK[BISHOP] | wPNBRQK[ROOK] | wPNBRQK[QUEEN] | wPNBRQK[KING];
     blackBb_ = bPNBRQK[PAWN] | bPNBRQK[KNIGHT] | bPNBRQK[BISHOP] | bPNBRQK[ROOK] | bPNBRQK[QUEEN] | bPNBRQK[KING];
-
 
     turn_ = sideToMove;
 
     occupied_ = whiteBb_ | blackBb_;
     empty_ = ~occupied_;
 
+    whiteRayAttacks = Bitboard::emptyBitboard; // forgetting to initialize these things caused weird things -_-
+    blackRayAttacks = Bitboard::emptyBitboard;
+    whiteRayPastOneAttacks = Bitboard::emptyBitboard;
+    blackRayPastOneAttacks = Bitboard::emptyBitboard;
+    for (int s = 0; s < 63; s++) {
+        pieceTypes_           [s] = EMPTYSQUARE;
+        pieceAttacksBitboards_[s] = Bitboard::emptyBitboard;
+    }
+
     U64 tmpB;
     int s;
     int cp = 0;
+    if (sideToMove == BLACKTURN) { changeTurn(); }
+    for (U64 b : arrWhitePieces_) { // same problem // fixed with the line above and below the loop but not great // I should really change the turn thingy...
+        tmpB = b;
+        while (tmpB) {
+            s = Bitboard::getIndexOfLeastSignificantSetBit(tmpB);
+            pieceTypes_[s] = static_cast<ChessPiece>(cp);
+            switch (static_cast<ChessPiece>(cp)) {
+            case PAWN:   pieceAttacksBitboards_[s] = getPawnAttacksBitboard  (s); break;
+            case KNIGHT: pieceAttacksBitboards_[s] = getKnightAttacksBitboard(s); break;
+            case BISHOP: pieceAttacksBitboards_[s] = getBishopAttacksBitboard(s); whiteRayAttacks |= getUBishopMovesBitboard(s); whiteRayPastOneAttacks |= bishopPastOneAttacks(s); break;
+            case ROOK:   pieceAttacksBitboards_[s] = getRookAttacksBitboard  (s); whiteRayAttacks |= getURookMovesBitboard  (s); whiteRayPastOneAttacks |= rookPastOneAttacks  (s); break;
+            case QUEEN:  pieceAttacksBitboards_[s] = getQueenAttacksBitboard (s); whiteRayAttacks |= getUQueenMovesBitboard (s); whiteRayPastOneAttacks |= queenPastOneAttacks (s); break;
+            case KING:   pieceAttacksBitboards_[s] = getKingAttacksBitboard  (s); break;
+            }
+            Bitboard::resetIsolatedLeastSignificantSetBit(tmpB);
+        }
+        cp++;
+    }
+    if (sideToMove == BLACKTURN) { changeTurn(); }
     
-    for (U64 b : arrWhitePieces_) { // same problem
-        tmpB = b;
-        s = Bitboard::getIndexOfLeastSignificantSetBit(tmpB);
-        while (tmpB) {
-            pieceTypes_[s] = static_cast<ChessPiece>(cp);
-            switch (static_cast<ChessPiece>(cp)) {
-            case PAWN:   pieceAttacksBitboards_[s] = getPawnAttacksBitboard  (s);
-            case ROOK:   pieceAttacksBitboards_[s] = getRookAttacksBitboard  (s);
-            case KNIGHT: pieceAttacksBitboards_[s] = getKnightAttacksBitboard(s);
-            case BISHOP: pieceAttacksBitboards_[s] = getBishopAttacksBitboard(s);
-            case QUEEN:  pieceAttacksBitboards_[s] = getQueenAttacksBitboard (s);
-            case KING:   pieceAttacksBitboards_[s] = getKingAttacksBitboard  (s);
-            }
-            Bitboard::resetIsolatedLeastSignificantSetBit(tmpB);
-        }
-        cp++;
-    }
     cp = 0;
-    for (U64 b : arrBlackPieces_) { // problem because of turn with moves
+    if (sideToMove == WHITETURN) { changeTurn(); }
+    for (U64 b : arrBlackPieces_) { // problem because of turn with moves // same as above
         tmpB = b;
-        s = Bitboard::getIndexOfLeastSignificantSetBit(tmpB);
         while (tmpB) {
+            s = Bitboard::getIndexOfLeastSignificantSetBit(tmpB);
             pieceTypes_[s] = static_cast<ChessPiece>(cp);
             switch (static_cast<ChessPiece>(cp)) {
-            case PAWN:   pieceAttacksBitboards_[s] = getPawnAttacksBitboard  (s);
-            case ROOK:   pieceAttacksBitboards_[s] = getRookAttacksBitboard  (s);
-            case KNIGHT: pieceAttacksBitboards_[s] = getKnightAttacksBitboard(s);
-            case BISHOP: pieceAttacksBitboards_[s] = getBishopAttacksBitboard(s);
-            case QUEEN:  pieceAttacksBitboards_[s] = getQueenAttacksBitboard (s);
-            case KING:   pieceAttacksBitboards_[s] = getKingAttacksBitboard  (s);
+            case PAWN:   pieceAttacksBitboards_[s] = getPawnAttacksBitboard  (s); break;
+            case KNIGHT: pieceAttacksBitboards_[s] = getKnightAttacksBitboard(s); break;
+            case BISHOP: pieceAttacksBitboards_[s] = getBishopAttacksBitboard(s); blackRayAttacks |= getUBishopMovesBitboard(s); blackRayPastOneAttacks |= bishopPastOneAttacks(s); break;
+            case ROOK:   pieceAttacksBitboards_[s] = getRookAttacksBitboard  (s); blackRayAttacks |= getURookMovesBitboard  (s); blackRayPastOneAttacks |= rookPastOneAttacks  (s); break;
+            case QUEEN:  pieceAttacksBitboards_[s] = getQueenAttacksBitboard (s); blackRayAttacks |= getUQueenMovesBitboard (s); blackRayPastOneAttacks |= queenPastOneAttacks (s); break;
+            case KING:   pieceAttacksBitboards_[s] = getKingAttacksBitboard  (s); break;
             }
             Bitboard::resetIsolatedLeastSignificantSetBit(tmpB);
         }
         cp++;
     }
+    if (sideToMove == WHITETURN) { changeTurn(); }
 }
 
 
-Board_Bitboards::~Board_Bitboards()
-{
-}
+Board_Bitboards::~Board_Bitboards() {}
 
-const std::array<U64, 6>&         Board_Bitboards::arrWhitePieces       () const { return arrWhitePieces_;        }
-const std::array<U64, 6>&         Board_Bitboards::arrBlackPieces       () const { return arrBlackPieces_;        }
-const Turn&                       Board_Bitboards::turn                 () const { return turn_;                  }
-const U64&                        Board_Bitboards::whiteBb              () const { return whiteBb_;               }
-const U64&                        Board_Bitboards::blackBb              () const { return blackBb_;               }
-const U64&                        Board_Bitboards::occupied             () const { return occupied_;              }
-const U64&                        Board_Bitboards::empty                () const { return empty_;                 }
-const std::array<U64, 64>&        Board_Bitboards::pieceAttacksBitboards() const { return pieceAttacksBitboards_; }
-const std::array<ChessPiece, 64>& Board_Bitboards::pieceTypes           () const { return pieceTypes_; }
+const std::array<U64, 6>&         Board_Bitboards::arrWhitePieces       () const { return this->arrWhitePieces_;        }
+const std::array<U64, 6>&         Board_Bitboards::arrBlackPieces       () const { return this->arrBlackPieces_;        }
+const Turn&                       Board_Bitboards::turn                 () const { return this->turn_;                  }
+const U64&                        Board_Bitboards::whiteBb              () const { return this->whiteBb_;               }
+const U64&                        Board_Bitboards::blackBb              () const { return this->blackBb_;               }
+const U64&                        Board_Bitboards::occupied             () const { return this->occupied_;              }
+const U64&                        Board_Bitboards::empty                () const { return this->empty_;                 }
+const std::array<U64, 64>&        Board_Bitboards::pieceAttacksBitboards() const { return this->pieceAttacksBitboards_; }
+const std::array<ChessPiece, 64>& Board_Bitboards::pieceTypes           () const { return this->pieceTypes_;            }
 
 
 std::array<U64, 6> Board_Bitboards::playingPiecesBb() {
@@ -258,6 +279,10 @@ U64 Board_Bitboards::playingBb() {
 }
 U64 Board_Bitboards::waitingBb() {
     return this->turn_ == BLACKTURN ? this->whiteBb_ : this->blackBb_;
+}
+
+U64 Board_Bitboards::waitingRayAttacks(){
+    return this->turn_ == BLACKTURN ? this->whiteRayAttacks : this->blackRayAttacks;
 }
 
 // Rotations
@@ -295,20 +320,6 @@ U64 Board_Bitboards::rotation180            (U64 bitboard) {
     return this->rotationClockWise90(this->rotationClockWise90(bitboard));
 }
 
-// Print board
-
-void Bitboard::visualizeBitboard(U64 bitboard) {
-    std::string rankString = "";
-    for (RankIndex rank = 0; rank < 8; rank++) {
-        rankString.clear();
-        for (FileIndex file = 0; file < 8; file++) {
-            rankString += bitboard >> fileRankIndexToSquareIndex(file, 7 - rank) & 1 ? '1' : '.';
-            rankString += ' ';
-        }
-        std::cout << rankString << '\n';
-    }
-    std::cout << std::endl;
-}
 
 U64 Board_Bitboards::southOne    (U64 bitboard) { return  bitboard >> 8; }
 U64 Board_Bitboards::northOne    (U64 bitboard) { return  bitboard << 8; }
@@ -330,8 +341,8 @@ U64 Board_Bitboards::getUKnightMovesBitboard (SquareIndex square) {
     partialMove    = eastOne(posBitboard);
     movesBitboard |= northEastOne(partialMove) | southEastOne(partialMove);
     
-    movesBitboard |= ((posBitboard >> 17) & Bitboard::notAFile) | ((posBitboard >> 15) & Bitboard::notAFile) | 
-                     ((posBitboard << 17) & Bitboard::notHFile) | ((posBitboard << 15) & Bitboard::notHFile);
+    movesBitboard |= ((posBitboard >> 17) & Bitboard::notHFile) | ((posBitboard >> 15) & Bitboard::notAFile) | 
+                     ((posBitboard << 17) & Bitboard::notAFile) | ((posBitboard << 15) & Bitboard::notHFile);
 
     return movesBitboard;
 }
@@ -347,8 +358,8 @@ U64 Board_Bitboards::getUKnightsMovesBitboard(U64 bitboard) {
     partialMove       = eastOne(bitboard);
     movesBitboard    |= northEastOne(partialMove) | southEastOne(partialMove);
     
-    movesBitboard    |= ((bitboard >> 17) & Bitboard::notAFile) | ((bitboard >> 15) & Bitboard::notAFile) | 
-                        ((bitboard << 17) & Bitboard::notHFile) | ((bitboard << 15) & Bitboard::notHFile);
+    movesBitboard    |= ((bitboard >> 17) & Bitboard::notHFile) | ((bitboard >> 15) & Bitboard::notAFile) | 
+                        ((bitboard << 17) & Bitboard::notAFile) | ((bitboard << 15) & Bitboard::notHFile);
 
     return movesBitboard;
 }
@@ -373,22 +384,40 @@ U64 Board_Bitboards::getUKingsMovesBitboard(U64 bitboard) {
     return movesBitboard;
 }
 
-U64 Board_Bitboards::uRookNorthRay(SquareIndex square) {
+U64 Board_Bitboards::uRayNorth    (SquareIndex square) {
     U64 file = Bitboard::files[Bitboard::squareIndexToFileIndex(square)];
     return file >> (square + 1) << (square + 1) ;
 }
-U64 Board_Bitboards::uRookSouthRay(SquareIndex square) {
+U64 Board_Bitboards::uRaySouth    (SquareIndex square) {
     U64 file = Bitboard::files[Bitboard::squareIndexToFileIndex(square)];
     return file << (64 - square) >> (64 - square);
 }
-U64 Board_Bitboards::uRookEastRay (SquareIndex square) {
+U64 Board_Bitboards::uRayEast     (SquareIndex square) {
     U64 rank = Bitboard::ranks[Bitboard::squareIndexToRankIndex(square)];
     return rank >> (square + 1) << (square + 1);
 }
-U64 Board_Bitboards::uRookWestRay (SquareIndex square) {
+U64 Board_Bitboards::uRayWest     (SquareIndex square) {
     U64 rank = Bitboard::ranks[Bitboard::squareIndexToRankIndex(square)];
     return rank << (64 - square) >> (64 - square);
 }
+U64 Board_Bitboards::uRayNorthEast(SquareIndex square) {
+    U64 diag = Bitboard::diags[Bitboard::squareIndexToDiagIndex(square)];
+    return diag >> (square + 1) << (square + 1);
+
+}
+U64 Board_Bitboards::uRayNorthWest(SquareIndex square) {
+    U64 antiDiag = Bitboard::antiDiags[Bitboard::squareIndexToAntiDiagIndex(square)];
+    return antiDiag >> (square + 1) << (square + 1);
+}
+U64 Board_Bitboards::uRaySouthEast(SquareIndex square) {
+    U64 antiDiag = Bitboard::antiDiags[Bitboard::squareIndexToAntiDiagIndex(square)];
+    return antiDiag << (64 - square) >> (64 - square);
+}
+U64 Board_Bitboards::uRaySouthWest(SquareIndex square) {
+    U64 diag = Bitboard::diags[Bitboard::squareIndexToDiagIndex(square)];
+    return diag << (64 - square) >> (64 - square);
+}
+
 U64 Board_Bitboards::getURookMovesBitboard (SquareIndex square) {
     if (square > 64) { return Bitboard::universalBitboard; }
 
@@ -412,23 +441,6 @@ U64 Board_Bitboards::getURooksMovesBitboard(U64 bitboard) {
     return movesBitboard;
 }
 
-U64 Board_Bitboards::uBishopNorthEastRay(SquareIndex square) {
-    U64 diag = Bitboard::diags[Bitboard::squareIndexToDiagIndex(square)];
-    return diag >> (square + 1) << (square + 1);
-
-}
-U64 Board_Bitboards::uBishopNorthWestRay(SquareIndex square) {
-    U64 antiDiag = Bitboard::antiDiags[Bitboard::squareIndexToAntiDiagIndex(square)];
-    return antiDiag >> (square + 1) << (square + 1);
-}
-U64 Board_Bitboards::uBishopSouthEastRay(SquareIndex square) {
-    U64 antiDiag = Bitboard::antiDiags[Bitboard::squareIndexToAntiDiagIndex(square)];
-    return antiDiag << (64 - square) >> (64 - square);
-}
-U64 Board_Bitboards::uBishopSouthWestRay(SquareIndex square) {
-    U64 diag = Bitboard::diags[Bitboard::squareIndexToDiagIndex(square)];
-    return diag << (64 - square) >> (64 - square);
-}
 U64 Board_Bitboards::getUBishopMovesBitboard(SquareIndex square) {
     U64 diag     = Bitboard::diags[Bitboard::squareIndexToDiagIndex(square)];
     U64 antiDiag = Bitboard::antiDiags[Bitboard::squareIndexToAntiDiagIndex(square)];
@@ -478,183 +490,157 @@ U64 Board_Bitboards::getUPawnsMovesBitboard(U64 bb, bool hasMoved, bool isWhite)
     return movesBb;
 }
 
-// nope
-bool Board_Bitboards::isInCheck() {
-    return bool(this->waitingBb() & this->playingPiecesBb()[KING]);
+
+
+// attacks limited
+
+U64 Board_Bitboards::rayNorth(SquareIndex square){
+    U64 ray = Bitboard::emptyBitboard;
+    U64 oneSquareRay = northOne(Bitboard::squareIndexToBitboard(square));
+    U64 oppPieces = waitingBb();
+    U64 ownPieces = playingBb();
+
+    while (oneSquareRay & ~ownPieces && oneSquareRay) {
+        ray |= oneSquareRay;
+        if (oneSquareRay & oppPieces) {
+            break;
+        }
+        oneSquareRay = northOne(oneSquareRay);
+    }
+    return ray;
 }
+U64 Board_Bitboards::raySouth(SquareIndex square) {
+    U64 ray = Bitboard::emptyBitboard;
+    U64 oneSquareRay = southOne(Bitboard::squareIndexToBitboard(square));
+    U64 oppPieces = waitingBb();
+    U64 ownPieces = playingBb();
 
-// you can abandon this function
-bool Board_Bitboards::isPinned()
-{
-    return false;
+    while (oneSquareRay & ~ownPieces && oneSquareRay) {
+        ray |= oneSquareRay;
+        if (oneSquareRay & oppPieces) {
+            break;
+        }
+        oneSquareRay = southOne(oneSquareRay);
+    }
+    return ray;
 }
+U64 Board_Bitboards::rayEast(SquareIndex square) {
+    U64 ray = Bitboard::emptyBitboard;
+    U64 oneSquareRay = eastOne(Bitboard::squareIndexToBitboard(square));
+    U64 oppPieces = waitingBb();
+    U64 ownPieces = playingBb();
 
+    while (oneSquareRay & ~ownPieces && oneSquareRay) {
+        ray |= oneSquareRay;
+        if (oneSquareRay & oppPieces) {
+            break;
+        }
+        oneSquareRay = eastOne(oneSquareRay);
+    }
+    return ray;
+}
+U64 Board_Bitboards::rayWest(SquareIndex square) {
+    U64 ray = Bitboard::emptyBitboard;
+    U64 oneSquareRay = westOne(Bitboard::squareIndexToBitboard(square));
+    U64 oppPieces = waitingBb();
+    U64 ownPieces = playingBb();
 
-// legal moves
+    while (oneSquareRay & ~ownPieces && oneSquareRay) {
+        ray |= oneSquareRay;
+        if (oneSquareRay & oppPieces) {
+            break;
+        }
+        oneSquareRay = westOne(oneSquareRay);
+    }
+    return ray;
+}
+U64 Board_Bitboards::rayNorthEast(SquareIndex square) {
+    U64 ray = Bitboard::emptyBitboard;
+    U64 oneSquareRay = northEastOne(Bitboard::squareIndexToBitboard(square));
+    U64 oppPieces = waitingBb();
+    U64 ownPieces = playingBb();
+
+    while (oneSquareRay & ~ownPieces && oneSquareRay) {
+        ray |= oneSquareRay;
+        if (oneSquareRay & oppPieces) {
+            break;
+        }
+        oneSquareRay = northEastOne(oneSquareRay);
+    }
+    return ray;
+}
+U64 Board_Bitboards::rayNorthWest(SquareIndex square) {
+    U64 ray = Bitboard::emptyBitboard;
+    U64 oneSquareRay = northWestOne(Bitboard::squareIndexToBitboard(square));
+    U64 oppPieces = waitingBb();
+    U64 ownPieces = playingBb();
+
+    while (oneSquareRay & ~ownPieces && oneSquareRay) {
+        ray |= oneSquareRay;
+        if (oneSquareRay & oppPieces) {
+            break;
+        }
+        oneSquareRay = northWestOne(oneSquareRay);
+    }
+    return ray;
+}
+U64 Board_Bitboards::raySouthEast(SquareIndex square) {
+    U64 ray = Bitboard::emptyBitboard;
+    U64 oneSquareRay = southEastOne(Bitboard::squareIndexToBitboard(square));
+    U64 oppPieces = waitingBb();
+    U64 ownPieces = playingBb();
+
+    while (oneSquareRay & ~ownPieces && oneSquareRay) {
+        ray |= oneSquareRay;
+        if (oneSquareRay & oppPieces) {
+            break;
+        }
+        oneSquareRay = southEastOne(oneSquareRay);
+    }
+    return ray;
+}
+U64 Board_Bitboards::raySouthWest(SquareIndex square) {
+    U64 ray = Bitboard::emptyBitboard;
+    U64 oneSquareRay = southWestOne(Bitboard::squareIndexToBitboard(square));
+    U64 oppPieces = waitingBb();
+    U64 ownPieces = playingBb();
+
+    while (oneSquareRay & ~ownPieces && oneSquareRay) {
+        ray |= oneSquareRay;
+        if (oneSquareRay & oppPieces) {
+            break;
+        }
+        oneSquareRay = southWestOne(oneSquareRay);
+    }
+    return ray;
+}
 
 U64 Board_Bitboards::getKingAttacksBitboard(SquareIndex square) {
-    return waitingBb() & Bitboard::squareIndexToBitboard(square);
+    return waitingBb() & Bitboard::squareIndexToBitboard(square); // ????
 }
 
 U64 Board_Bitboards::getKnightAttacksBitboard(SquareIndex square) {
     U64 movesBitboard = getUKnightMovesBitboard(square);
 
-    return movesBitboard ^ (playingBb());
-}
-
-U64 Board_Bitboards::bishopNorthEastRay(SquareIndex square) {
-    U64 ray            = uBishopNorthEastRay(square);
-    U64 resultRay      = Bitboard::emptyBitboard;
-    U64 LSB            = Bitboard::getIsolatedLeastSignificantSetBit(ray);
-    U64 ownPieces      = playingBb();
-    U64 opponentPieces = waitingBb();
-
-    while (LSB & ~ownPieces) {
-        resultRay |= LSB;
-        if (LSB & opponentPieces) { break; } // condition not working | fixed, this line was not supposed to be the last line in the loop
-
-        Bitboard::resetIsolatedLeastSignificantSetBit(ray);
-        LSB = Bitboard::getIsolatedLeastSignificantSetBit(ray);
-    }
-    return resultRay;
-}
-U64 Board_Bitboards::bishopNorthWestRay(SquareIndex square) {
-    U64 ray            = uBishopNorthWestRay(square);
-    U64 resultRay      = Bitboard::emptyBitboard;
-    U64 LSB            = Bitboard::getIsolatedLeastSignificantSetBit(ray);
-    U64 ownPieces      = playingBb();
-    U64 opponentPieces = waitingBb();
-
-    while (LSB & ~ownPieces) {
-        resultRay |= LSB;
-        if (LSB & opponentPieces) { break; }
-
-        Bitboard::resetIsolatedLeastSignificantSetBit(ray);
-        LSB = Bitboard::getIsolatedLeastSignificantSetBit(ray);
-    }
-
-    return resultRay;
-}
-U64 Board_Bitboards::bishopSouthEastRay(SquareIndex square) {
-    U64 ray            = uBishopSouthEastRay(square);
-    U64 resultRay      = Bitboard::emptyBitboard;
-    U64 MSB            = Bitboard::getIsolatedMostSignificantSetBit(ray);
-    U64 ownPieces      = playingBb();
-    U64 opponentPieces = waitingBb();
-
-    while (MSB & ~ownPieces) {
-        resultRay |= MSB;
-        if (MSB & opponentPieces) { break; }
-
-        Bitboard::resetIsolatedMostSignificantSetBit(ray);
-        MSB = Bitboard::getIsolatedMostSignificantSetBit(ray);
-    }
-
-    return resultRay;
-}
-U64 Board_Bitboards::bishopSouthWestRay(SquareIndex square) {
-    U64 ray            = uBishopSouthWestRay(square);
-    U64 resultRay      = Bitboard::emptyBitboard;
-    U64 MSB            = Bitboard::getIsolatedMostSignificantSetBit(ray);
-    U64 ownPieces      = playingBb();
-    U64 opponentPieces = waitingBb();
-
-    while (MSB & ~ownPieces) {
-        resultRay |= MSB;
-        if (MSB & opponentPieces) { break; }
-
-        Bitboard::resetIsolatedMostSignificantSetBit(ray);
-        MSB = Bitboard::getIsolatedMostSignificantSetBit(ray);
-    }
-
-    return resultRay;
+    return movesBitboard & ~playingBb();
 }
 
 U64 Board_Bitboards::getBishopAttacksBitboard(SquareIndex square){
     U64 rayNE, rayNW, raySE, raySW;
-    rayNE = bishopNorthEastRay(square);
-    rayNW = bishopNorthWestRay (square);
-    raySE = bishopSouthEastRay(square);
-    raySW = bishopSouthWestRay (square);
+    rayNE = rayNorthEast(square);
+    rayNW = rayNorthWest(square);
+    raySE = raySouthEast(square);
+    raySW = raySouthWest(square);
 
     return rayNE | rayNW | raySE | raySW;
 }
 
-U64 Board_Bitboards::rookNorthRayAttack(SquareIndex square){
-    U64 ray            = uRookNorthRay(square);
-    U64 resultRay      = Bitboard::emptyBitboard;
-    U64 LSB            = Bitboard::getIsolatedLeastSignificantSetBit(ray);
-    U64 ownPieces      = playingBb();
-    U64 opponentPieces = waitingBb();
-
-    while (LSB & ~ownPieces) {
-        resultRay |= LSB;
-        if (LSB & opponentPieces) { break; }
-
-        Bitboard::resetIsolatedLeastSignificantSetBit(ray);
-        LSB = Bitboard::getIsolatedLeastSignificantSetBit(ray);
-    }
-
-    return resultRay;
-}
-U64 Board_Bitboards::rookSouthRayAttack(SquareIndex square) {
-    U64 ray            = uRookSouthRay(square);
-    U64 resultRay      = Bitboard::emptyBitboard;
-    U64 MSB            = Bitboard::getIsolatedMostSignificantSetBit(ray);
-    U64 ownPieces      = playingBb();
-    U64 opponentPieces = waitingBb();
-
-    while (MSB & ~ownPieces) {
-        resultRay |= MSB;
-        if (MSB & opponentPieces) { break; }
-
-        Bitboard::resetIsolatedMostSignificantSetBit(ray);
-        MSB = Bitboard::getIsolatedMostSignificantSetBit(ray);
-    }
-
-    return resultRay;
-}
-U64 Board_Bitboards::rookEastRayAttack(SquareIndex square) {
-    U64 ray            = uRookEastRay(square);
-    U64 resultRay      = Bitboard::emptyBitboard;
-    U64 LSB            = Bitboard::getIsolatedLeastSignificantSetBit(ray);
-    U64 ownPieces      = playingBb();
-    U64 opponentPieces = waitingBb();
-
-    while (LSB & ~ownPieces) {
-        resultRay |= LSB;
-        if (LSB & opponentPieces) { break; }
-
-        Bitboard::resetIsolatedLeastSignificantSetBit(ray);
-        LSB = Bitboard::getIsolatedLeastSignificantSetBit(ray);
-    }
-
-    return resultRay;
-}
-U64 Board_Bitboards::rookWestRayAttack(SquareIndex square) {
-    U64 ray            = uRookWestRay(square);
-    U64 resultRay      = Bitboard::emptyBitboard;
-    U64 MSB            = Bitboard::getIsolatedMostSignificantSetBit(ray);
-    U64 ownPieces      = playingBb();
-    U64 opponentPieces = waitingBb();
-
-    while (MSB & ~ownPieces) {
-        resultRay |= MSB;
-        if (MSB & opponentPieces) { break; }
-
-        Bitboard::resetIsolatedMostSignificantSetBit(ray);
-        MSB = Bitboard::getIsolatedMostSignificantSetBit(ray);
-    }
-
-    return resultRay;
-}
-
 U64 Board_Bitboards::getRookAttacksBitboard(SquareIndex square) {
     U64 rayN, rayS, rayE, rayW;
-    rayN = rookNorthRayAttack(square);
-    rayS = rookSouthRayAttack(square);
-    rayE = rookEastRayAttack (square);
-    rayW = rookWestRayAttack (square);
+    rayN = rayNorth(square);
+    rayS = raySouth(square);
+    rayE = rayEast (square);
+    rayW = rayWest (square);
 
     return rayN | rayS | rayE | rayW;
 }
@@ -665,12 +651,13 @@ U64 Board_Bitboards::getQueenAttacksBitboard(SquareIndex square) {
 
 U64 Board_Bitboards::getPawnAttacksBitboard(SquareIndex square) {
     U64 b = Bitboard::squareIndexToBitboard(square);
-
-    return (
-        this->turn_ == WHITETURN ?
-            northEastOne(b) | northWestOne(b) & this->whiteBb_ :
-            southEastOne(b) | southWestOne(b) & this->blackBb_);
+    if (this->turn_ == WHITETURN) {
+        return (northEastOne(b) | northWestOne(b)) & ~this->whiteBb_;
+    }
+    return (southEastOne(b) | southWestOne(b)) & ~this->blackBb_;
 }
+
+// why is this here
 
 void Board_Bitboards::changeBoard(std::array<U64, 6> wPNBRQK, std::array<U64, 6> bPNBRQK, Turn turn) {
     for (int i = 0; i < 6; ++i) {
@@ -728,9 +715,207 @@ void Board_Bitboards::changeBoard(std::array<U64, 6> wPNBRQK, std::array<U64, 6>
     }
 }
 
-Turn Board_Bitboards::changeTurn()
-{
-    this->turn_ = true;
+Turn Board_Bitboards::changeTurn() {
+    this->turn_ = !this->turn_;
 
     return this->turn();
+}
+
+// necessary for pinned pieces
+
+U64 Board_Bitboards::rayNorthPastOne(SquareIndex square) {
+    U64 ray          = Bitboard::emptyBitboard;
+    U64 oneSquareRay = northOne(Bitboard::squareIndexToBitboard(square));
+    U64 oppPieces    = waitingBb();
+    U64 ownPieces    = playingBb();
+
+    int oppPieceEncountered = 0;
+    while (oneSquareRay & ~ownPieces && oneSquareRay) {
+        ray |= oneSquareRay;
+        if (oneSquareRay & oppPieces) {
+            oppPieceEncountered += 1;
+        }
+        if (oppPieceEncountered == 2) {
+            break;
+        }
+        oneSquareRay = northOne(oneSquareRay);
+    }
+    return ray;
+}
+U64 Board_Bitboards::raySouthPastOne(SquareIndex square) {
+    U64 ray          = Bitboard::emptyBitboard;
+    U64 oneSquareRay = southOne(Bitboard::squareIndexToBitboard(square));
+    U64 oppPieces    = waitingBb();
+    U64 ownPieces    = playingBb();
+
+    int oppPieceEncountered = 0;
+    while (oneSquareRay & ~ownPieces && oneSquareRay) {
+        ray |= oneSquareRay;
+        if (oneSquareRay & oppPieces) {
+            oppPieceEncountered += 1;
+        }
+        if (oppPieceEncountered == 2) {
+            break;
+        }
+        oneSquareRay = southOne(oneSquareRay);
+    }
+    return ray;
+}
+U64 Board_Bitboards::rayEastPastOne(SquareIndex square) {
+    U64 ray          = Bitboard::emptyBitboard;
+    U64 oneSquareRay = eastOne(Bitboard::squareIndexToBitboard(square));
+    U64 oppPieces    = waitingBb();
+    U64 ownPieces    = playingBb();
+
+    int oppPieceEncountered = 0;
+    while (oneSquareRay & ~ownPieces && oneSquareRay) {
+        ray |= oneSquareRay;
+        if (oneSquareRay & oppPieces) {
+            oppPieceEncountered += 1;
+        }
+        if (oppPieceEncountered == 2) {
+            break;
+        }
+        oneSquareRay = eastOne(oneSquareRay);
+    }
+    return ray;
+}
+U64 Board_Bitboards::rayWestPastOne(SquareIndex square) {
+    U64 ray          = Bitboard::emptyBitboard;
+    U64 oneSquareRay = westOne(Bitboard::squareIndexToBitboard(square));
+    U64 oppPieces    = waitingBb();
+    U64 ownPieces    = playingBb();
+
+    int oppPieceEncountered = 0;
+    while (oneSquareRay & ~ownPieces && oneSquareRay) {
+        ray |= oneSquareRay;
+        if (oneSquareRay & oppPieces) {
+            oppPieceEncountered += 1;
+        }
+        if (oppPieceEncountered == 2) {
+            break;
+        }
+        oneSquareRay = westOne(oneSquareRay);
+    }
+    return ray;
+}
+U64 Board_Bitboards::rayNorthEastPastOne(SquareIndex square) {
+    U64 ray          = Bitboard::emptyBitboard;
+    U64 oneSquareRay = northEastOne(Bitboard::squareIndexToBitboard(square));
+    U64 oppPieces    = waitingBb();
+    U64 ownPieces    = playingBb();
+
+    int oppPieceEncountered = 0;
+    while (oneSquareRay & ~ownPieces && oneSquareRay) {
+        ray |= oneSquareRay;
+        if (oneSquareRay & oppPieces) {
+            oppPieceEncountered += 1;
+        }
+        if (oppPieceEncountered == 2) {
+            break;
+        }
+        oneSquareRay = northEastOne(oneSquareRay);
+    }
+    return ray;
+}
+U64 Board_Bitboards::rayNorthWestPastOne(SquareIndex square) {
+    U64 ray          = Bitboard::emptyBitboard;
+    U64 oneSquareRay = northWestOne(Bitboard::squareIndexToBitboard(square));
+    U64 oppPieces    = waitingBb();
+    U64 ownPieces    = playingBb();
+
+    int oppPieceEncountered = 0;
+    while (oneSquareRay & ~ownPieces && oneSquareRay) {
+        ray |= oneSquareRay;
+        if (oneSquareRay & oppPieces) {
+            oppPieceEncountered += 1;
+        }
+        if (oppPieceEncountered == 2) {
+            break;
+        }
+        oneSquareRay = northWestOne(oneSquareRay);
+    }
+    return ray;
+}
+U64 Board_Bitboards::raySouthEastPastOne(SquareIndex square) {
+    U64 ray          = Bitboard::emptyBitboard;
+    U64 oneSquareRay = southEastOne(Bitboard::squareIndexToBitboard(square));
+    U64 oppPieces    = waitingBb();
+    U64 ownPieces    = playingBb();
+
+    int oppPieceEncountered = 0;
+    while (oneSquareRay & ~ownPieces && oneSquareRay) {
+        ray |= oneSquareRay;
+        if (oneSquareRay & oppPieces) {
+            oppPieceEncountered += 1;
+        }
+        if (oppPieceEncountered == 2) {
+            break;
+        }
+        oneSquareRay = southEastOne(oneSquareRay);
+    }
+    return ray;
+}
+U64 Board_Bitboards::raySouthWestPastOne(SquareIndex square) {
+    U64 ray          = Bitboard::emptyBitboard;
+    U64 oneSquareRay = southWestOne(Bitboard::squareIndexToBitboard(square));
+    U64 oppPieces    = waitingBb();
+    U64 ownPieces    = playingBb();
+
+    int oppPieceEncountered = 0;
+    while (oneSquareRay & ~ownPieces && oneSquareRay) {
+        ray |= oneSquareRay;
+        if (oneSquareRay & oppPieces) {
+            oppPieceEncountered += 1;
+        }
+        if (oppPieceEncountered == 2) {
+            break;
+        }
+        oneSquareRay = southWestOne(oneSquareRay);
+    }
+    return ray;
+}
+
+U64 Board_Bitboards::bishopPastOneAttacks(SquareIndex square) {
+    U64 rayNE, rayNW, raySE, raySW;
+    rayNE = rayNorthEastPastOne(square);
+    rayNW = rayNorthWestPastOne(square);
+    raySE = raySouthEastPastOne(square);
+    raySW = raySouthWestPastOne(square);
+
+    return rayNE | rayNW | raySE | raySW;
+}
+
+U64 Board_Bitboards::rookPastOneAttacks(SquareIndex square) {
+    U64 rayN, rayS, rayE, rayW;
+    rayN = rayNorthPastOne(square);
+    rayS = raySouthPastOne(square);
+    rayE = rayEastPastOne (square);
+    rayW = rayWestPastOne (square);
+
+    return rayN | rayS | rayE | rayW;
+}
+
+U64 Board_Bitboards::queenPastOneAttacks(SquareIndex square) {
+    return bishopPastOneAttacks(square) | rookPastOneAttacks(square);
+}
+
+// should work
+bool Board_Bitboards::isInCheck() {
+    return bool(this->waitingRayAttacks() & this->playingPiecesBb()[KING]);
+}
+
+// _
+bool Board_Bitboards::isPinned() {
+    return false;
+}
+
+U64 Board_Bitboards::knightMoves(SquareIndex square) {
+    U64 moves      = Bitboard::emptyBitboard;
+    U64 rayAttacks = waitingRayAttacks();
+    bool check = this->isInCheck();
+    /*if not in check then      | sudden (genius) idea: make ray attacks while removing 1 piece ahead or code other ray functions that go past 1 opponent piece !!!!
+      if not pinned*/
+    moves |= pieceAttacksBitboards_[square];
+    return 0ULL;
 }
